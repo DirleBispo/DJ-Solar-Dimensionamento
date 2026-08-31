@@ -1,41 +1,241 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import ClientAddressSolar, { AddressSolarValue } from "@/components/ClientAddressSolar";
-import { MODULOS_BRASIL as MODULOS, INVERSORES_BRASIL as INVERSORES } from "@/lib/equipment-catalog";
-import { analisarFinanceiro, dimensionarSistema, dimensionarTelhado, estimarMateriais, mediaConsumo, verificarCompatibilidade } from "@/lib/solar-calculations";
 
-type Tab = "dashboard" | "projetos" | "diagrama" | "clientes" | "equipamentos";
-type Cliente = { id:string; nome:string; cidade:string; telefone:string; endereco?:AddressSolarValue };
-type ProjetoSalvo = { id:string; nome:string; cliente:string; consumo:number; potenciaKwp:number; modulos:number; telhado:number; status:string; atualizadoEm:string };
-const MESES=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-const vazioEndereco:AddressSolarValue={cep:"",logradouro:"",numero:"",complemento:"",bairro:"",cidade:"",uf:""};
-const n=(v:string,f=0)=>{const x=Number(String(v).replace(",","."));return Number.isFinite(x)?x:f};
-function salvarLocal<T>(k:string,v:T){if(typeof window!=="undefined")localStorage.setItem(k,JSON.stringify(v))}
+type Tab = "visao" | "projetos" | "diagrama" | "clientes" | "equipamentos";
+type EquipmentTab = "modulo" | "inversor";
+type Cliente = { id: string; nome: string; cidade: string; telefone: string };
+type Projeto = { id: string; nome: string; cliente: string; potenciaKwp: number; modulos: number; status: string };
 
-export default function Home(){
- const [tab,setTab]=useState<Tab>("dashboard"),[clientes,setClientes]=useState<Cliente[]>([]),[projetos,setProjetos]=useState<ProjetoSalvo[]>([]),[mensagem,setMensagem]=useState("");
- const [clienteNome,setClienteNome]=useState(""),[clienteTelefone,setClienteTelefone]=useState(""),[clienteEndereco,setClienteEndereco]=useState<AddressSolarValue>(vazioEndereco);
- const [nomeProjeto,setNomeProjeto]=useState("Projeto residencial"),[clienteProjeto,setClienteProjeto]=useState(""),[modoConsumo,setModoConsumo]=useState<"medio"|"12meses">("12meses"),[consumoMedio,setConsumoMedio]=useState("600"),[consumos,setConsumos]=useState<string[]>(Array(12).fill("600")),[ligacao,setLigacao]=useState("monofasica"),[hsp,setHsp]=useState("5.0"),[perdas,setPerdas]=useState("20"),[compensacao,setCompensacao]=useState("100");
- const [moduloId,setModuloId]=useState(MODULOS[0].id),[inversorId,setInversorId]=useState(INVERSORES[0].id),[tempMin,setTempMin]=useState("5"),[tempCelulaMax,setTempCelulaMax]=useState("70"),[stringsMppt,setStringsMppt]=useState("1");
- const [telhadoComprimento,setTelhadoComprimento]=useState("7.5"),[telhadoLargura,setTelhadoLargura]=useState("3.5"),[recuo,setRecuo]=useState("0.15"),[obstaculos,setObstaculos]=useState("0"),[espacamento,setEspacamento]=useState("0.02"),[orientacao,setOrientacao]=useState<"vertical"|"horizontal">("vertical"),[distanciaInversor,setDistanciaInversor]=useState("15"),[tarifa,setTarifa]=useState("0.95"),[investimento,setInvestimento]=useState("15000"),[buscaEquip,setBuscaEquip]=useState("");
- useEffect(()=>{try{const c=localStorage.getItem("djsolar-clientes"),p=localStorage.getItem("djsolar-projetos");if(c)setClientes(JSON.parse(c));if(p)setProjetos(JSON.parse(p))}catch{}},[]);
- const modulo=MODULOS.find(x=>x.id===moduloId)??MODULOS[0],inversor=INVERSORES.find(x=>x.id===inversorId)??INVERSORES[0];
- const consumoCalculado=modoConsumo==="medio"?Math.max(0,n(consumoMedio)):mediaConsumo(consumos.map(x=>Math.max(0,n(x))));
- const resultado=useMemo(()=>dimensionarSistema({consumoMensalKwh:consumoCalculado||1,horasSolPico:Math.max(.1,n(hsp,5)),perdasPct:n(perdas,20),compensacaoPct:n(compensacao,100),potenciaModuloWp:modulo.potenciaWp,areaModuloM2:modulo.larguraM*modulo.alturaM}),[consumoCalculado,hsp,perdas,compensacao,modulo]);
- const compatibilidade=useMemo(()=>verificarCompatibilidade({modulo,inversor,quantidadeModulos:resultado.quantidadeModulos,temperaturaMinC:n(tempMin,5),temperaturaCelulaMaxC:n(tempCelulaMax,70),stringsPorMppt:Math.max(1,Math.round(n(stringsMppt,1)))}),[modulo,inversor,resultado.quantidadeModulos,tempMin,tempCelulaMax,stringsMppt]);
- const telhado=useMemo(()=>dimensionarTelhado({comprimentoM:n(telhadoComprimento),larguraM:n(telhadoLargura),recuoM:n(recuo),obstaculosM2:n(obstaculos),espacamentoM:n(espacamento),orientacaoModulo:orientacao,modulo}),[telhadoComprimento,telhadoLargura,recuo,obstaculos,espacamento,orientacao,modulo]);
- const qtd=Math.min(resultado.quantidadeModulos,telhado.capacidadeFinal||0),materiais=useMemo(()=>estimarMateriais(qtd,telhado.colunas,telhado.linhas,n(distanciaInversor,15)),[qtd,telhado,distanciaInversor]),financeiro=useMemo(()=>analisarFinanceiro({geracaoMensalKwh:resultado.geracaoMensalEstimadaKwh,tarifaKwh:n(tarifa,.95),investimento:n(investimento,15000)}),[resultado.geracaoMensalEstimadaKwh,tarifa,investimento]);
- const adicionarCliente=()=>{if(!clienteNome.trim())return setMensagem("Informe o nome do cliente.");const novo={id:crypto.randomUUID(),nome:clienteNome.trim(),cidade:[clienteEndereco.cidade,clienteEndereco.uf].filter(Boolean).join("/"),telefone:clienteTelefone.trim(),endereco:clienteEndereco};const l=[novo,...clientes];setClientes(l);salvarLocal("djsolar-clientes",l);setClienteNome("");setClienteTelefone("");setClienteEndereco(vazioEndereco);setMensagem("Cliente salvo com endereço e recurso solar.")};
- const selecionarClienteProjeto=(nome:string)=>{setClienteProjeto(nome);const c=clientes.find(x=>x.nome===nome);if(c?.endereco?.hsp)setHsp(String(c.endereco.hsp))};
- const salvarProjeto=()=>{const cabe=telhado.capacidadeFinal>=resultado.quantidadeModulos;const novo={id:crypto.randomUUID(),nome:nomeProjeto||"Projeto sem nome",cliente:clienteProjeto||"Sem cliente",consumo:consumoCalculado,potenciaKwp:resultado.potenciaInstaladaKwp,modulos:resultado.quantidadeModulos,telhado:telhado.capacidadeFinal,status:!cabe?"Telhado insuficiente":compatibilidade.status==="ok"?"Compatível":"Revisar",atualizadoEm:new Date().toLocaleDateString("pt-BR")};const l=[novo,...projetos];setProjetos(l);salvarLocal("djsolar-projetos",l);setMensagem("Projeto salvo.")};
- const q=buscaEquip.toLowerCase();const mods=MODULOS.filter(x=>`${x.fabricante} ${x.modelo} ${x.linha}`.toLowerCase().includes(q)),invs=INVERSORES.filter(x=>`${x.fabricante} ${x.modelo} ${x.linha} ${x.tipo}`.toLowerCase().includes(q));
- return <main className="app-shell"><section className="content"><header className="topbar"><div><span className="eyebrow">DJ SOLAR ENGENHARIA</span><h1>{tab==="dashboard"?"Dimensione com precisão. Venda com confiança.":tab==="projetos"?"Projeto fotovoltaico":tab==="diagrama"?"Diagrama unifilar":tab==="clientes"?"Clientes":"Equipamentos"}</h1></div><span className="version-badge">Projeto profissional</span></header>{mensagem&&<div className="message" onClick={()=>setMensagem("")}>{mensagem}<span>×</span></div>}
- {tab==="dashboard"&&<><div className="metric-grid"><Metric label="Projetos" value={String(projetos.length)} detail="salvos"/><Metric label="Clientes" value={String(clientes.length)} detail="cadastrados"/><Metric label="Módulos" value={String(MODULOS.length)} detail="catálogo Brasil"/><Metric label="Inversores" value={String(INVERSORES.length)} detail="catálogo Brasil"/></div><section className="panel"><h2>Resumo técnico do sistema</h2><div className="result-grid"><Result label="Consumo" value={`${consumoCalculado.toFixed(0)} kWh/mês`}/><Result label="Sol pleno" value={`${n(hsp,5).toFixed(2)} h/dia`}/><Result label="Potência" value={`${resultado.potenciaInstaladaKwp.toFixed(2)} kWp`}/><Result label="Módulos" value={String(resultado.quantidadeModulos)}/><Result label="Geração" value={`${resultado.geracaoMensalEstimadaKwh.toFixed(0)} kWh/mês`}/></div></section></>}
- {tab==="clientes"&&<div className="two-columns"><section className="panel"><h2>Novo cliente / unidade consumidora</h2><div className="form-grid"><Field label="Nome / empresa"><input value={clienteNome} onChange={e=>setClienteNome(e.target.value)}/></Field><Field label="Telefone"><input value={clienteTelefone} onChange={e=>setClienteTelefone(e.target.value)}/></Field></div><ClientAddressSolar value={clienteEndereco} onChange={setClienteEndereco} onHspFound={v=>setHsp(String(v))}/><button className="primary top-gap" onClick={adicionarCliente}>Salvar cliente</button></section><section className="panel"><h2>Clientes cadastrados</h2>{clientes.length?clientes.map(c=><div className="list-row" key={c.id}><div><strong>{c.nome}</strong><span>{c.endereco?`${c.endereco.logradouro}, ${c.endereco.numero} • ${c.endereco.bairro} • ${c.cidade}`:c.cidade}</span><span>{c.endereco?.hsp?`Sol pleno: ${c.endereco.hsp.toFixed(2)} h/dia`:"Sol pleno não consultado"}</span></div><span>{c.telefone}</span></div>):<Empty texto="Nenhum cliente cadastrado."/>}</section></div>}
- {tab==="projetos"&&<><section className="panel"><h2>Identificação e consumo</h2><div className="form-grid three"><Field label="Projeto"><input value={nomeProjeto} onChange={e=>setNomeProjeto(e.target.value)}/></Field><Field label="Cliente"><select value={clienteProjeto} onChange={e=>selecionarClienteProjeto(e.target.value)}><option value="">Sem cliente</option>{clientes.map(c=><option key={c.id}>{c.nome}</option>)}</select></Field><Field label="Ligação"><select value={ligacao} onChange={e=>setLigacao(e.target.value)}><option>monofasica</option><option>bifasica</option><option>trifasica</option></select></Field></div><div className="form-grid four"><Field label="Sol pleno HSP"><input value={hsp} onChange={e=>setHsp(e.target.value)}/></Field><Field label="Perdas %"><input value={perdas} onChange={e=>setPerdas(e.target.value)}/></Field><Field label="Compensação %"><input value={compensacao} onChange={e=>setCompensacao(e.target.value)}/></Field><Field label="Consumo médio"><input value={consumoMedio} onChange={e=>setConsumoMedio(e.target.value)}/></Field></div><div className="segmented"><button className={modoConsumo==="medio"?"selected":""} onClick={()=>setModoConsumo("medio")}>Média</button><button className={modoConsumo==="12meses"?"selected":""} onClick={()=>setModoConsumo("12meses")}>12 meses</button></div>{modoConsumo==="12meses"&&<div className="local-scroll"><div className="months-grid">{MESES.map((m,i)=><Field key={m} label={m}><input value={consumos[i]} onChange={e=>{const a=[...consumos];a[i]=e.target.value;setConsumos(a)}}/></Field>)}</div></div>}</section><section className="panel"><h2>Dimensionamento e equipamentos</h2><div className="form-grid"><Field label="Módulo"><select value={moduloId} onChange={e=>setModuloId(e.target.value)}>{MODULOS.map(x=><option value={x.id} key={x.id}>{x.fabricante} • {x.modelo}</option>)}</select></Field><Field label="Inversor"><select value={inversorId} onChange={e=>setInversorId(e.target.value)}>{INVERSORES.map(x=><option value={x.id} key={x.id}>{x.fabricante} • {x.modelo}</option>)}</select></Field></div><div className="result-grid"><Result label="Potência" value={`${resultado.potenciaInstaladaKwp.toFixed(2)} kWp`}/><Result label="Módulos" value={String(resultado.quantidadeModulos)}/><Result label="CC/CA" value={compatibilidade.relacaoCcCa.toFixed(2)}/><Result label="String mín." value={String(compatibilidade.modulosMinString)}/><Result label="String máx." value={String(compatibilidade.modulosMaxString)}/></div><div className="alerts">{compatibilidade.alertas.map((a,i)=><div key={i} className={`alert ${a.nivel}`}>{a.texto}</div>)}</div></section><section className="panel"><h2>Telhado e arranjo</h2><div className="form-grid four"><Field label="Comprimento m"><input value={telhadoComprimento} onChange={e=>setTelhadoComprimento(e.target.value)}/></Field><Field label="Largura m"><input value={telhadoLargura} onChange={e=>setTelhadoLargura(e.target.value)}/></Field><Field label="Recuo m"><input value={recuo} onChange={e=>setRecuo(e.target.value)}/></Field><Field label="Obstáculos m²"><input value={obstaculos} onChange={e=>setObstaculos(e.target.value)}/></Field><Field label="Espaçamento m"><input value={espacamento} onChange={e=>setEspacamento(e.target.value)}/></Field><Field label="Orientação"><select value={orientacao} onChange={e=>setOrientacao(e.target.value as any)}><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select></Field></div><p>Capacidade: <strong>{telhado.capacidadeFinal} módulos</strong> • {telhado.potenciaMaximaKwp.toFixed(2)} kWp</p></section><section className="panel"><h2>Materiais e financeiro preliminar</h2><div className="result-grid"><Result label="Trilhos" value={`${materiais.trilhosM} m`}/><Result label="Grampos finais" value={String(materiais.gramposFinais)}/><Result label="Grampos interm." value={String(materiais.gramposIntermediarios)}/><Result label="Economia/mês" value={`R$ ${financeiro.economiaMensal.toFixed(0)}`}/><Result label="Payback" value={financeiro.paybackAnos?`${financeiro.paybackAnos.toFixed(1)} anos`:"—"}/></div><div className="form-grid"><Field label="Distância inversor m"><input value={distanciaInversor} onChange={e=>setDistanciaInversor(e.target.value)}/></Field><Field label="Tarifa R$/kWh"><input value={tarifa} onChange={e=>setTarifa(e.target.value)}/></Field><Field label="Investimento R$"><input value={investimento} onChange={e=>setInvestimento(e.target.value)}/></Field></div><button className="primary" onClick={salvarProjeto}>Salvar projeto</button></section></>}
- {tab==="equipamentos"&&<><section className="panel"><div className="section-heading"><div><span className="kicker">CATÁLOGO BRASIL</span><h2>Equipamentos mais presentes no mercado</h2></div><span className="pill green">{MODULOS.length} módulos • {INVERSORES.length} inversores</span></div><Field label="Buscar fabricante, modelo ou linha"><input value={buscaEquip} onChange={e=>setBuscaEquip(e.target.value)} placeholder="Ex.: Huawei, Jinko, 6K, TOPCon..."/></Field><p className="technical-note">Use sempre a revisão do datasheet do equipamento efetivamente fornecido na obra para o projeto executivo.</p></section><div className="two-columns"><section className="panel"><h2>Módulos fotovoltaicos</h2>{mods.map(m=><div className="equipment-card" key={m.id}><strong>{m.fabricante}</strong><h3>{m.modelo}</h3><div className="spec-grid"><span>{m.tecnologia}</span><span>{m.potenciaWp} Wp</span><span>Voc {m.vocV} V</span><span>Vmp {m.vmpV} V</span><span>Isc {m.iscA} A</span><span>Imp {m.impA} A</span><span>{m.alturaM}×{m.larguraM} m</span></div><button className="primary top-gap" onClick={()=>{setModuloId(m.id);setTab("projetos")}}>Usar no projeto</button></div>)}</section><section className="panel"><h2>Inversores</h2>{invs.map(i=><div className="equipment-card" key={i.id}><strong>{i.fabricante}</strong><h3>{i.modelo}</h3><div className="spec-grid"><span>{i.tipo}</span><span>{i.fase}</span><span>{i.potenciaAcKw} kW</span><span>{i.quantidadeMppt} MPPT</span><span>{i.mpptMinV}-{i.mpptMaxV} V</span><span>{i.correnteMaxMpptA} A/MPPT</span></div><button className="primary top-gap" onClick={()=>{setInversorId(i.id);setTab("projetos")}}>Usar este inversor no projeto</button></div>)}</section></div></>}
- {tab==="diagrama"&&<section className="panel"><h2>Diagrama unifilar fotovoltaico</h2><div className="diagram-flow"><div><strong>Arranjo FV</strong><span>{resultado.quantidadeModulos}× {modulo.potenciaWp} W</span></div><b>→</b><div><strong>Inversor</strong><span>{inversor.fabricante} {inversor.modelo}</span></div><b>→</b><div><strong>Proteção CA</strong><span>dimensionar</span></div><b>→</b><div><strong>Rede</strong><span>distribuidora</span></div></div></section>}
- </section><nav className="bottom-nav"><button className={tab==="dashboard"?"active":""} onClick={()=>setTab("dashboard")}>⌂<span>Visão</span></button><button className={tab==="projetos"?"active":""} onClick={()=>setTab("projetos")}>▣<span>Projetos</span></button><button className={tab==="diagrama"?"active":""} onClick={()=>setTab("diagrama")}>⌁<span>Diagrama</span></button><button className={tab==="clientes"?"active":""} onClick={()=>setTab("clientes")}>♙<span>Clientes</span></button><button className={tab==="equipamentos"?"active":""} onClick={()=>setTab("equipamentos")}>▦<span>Equipamentos</span></button></nav></main>
+const fmt = (n: number, casas = 1) => n.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
+const num = (v: string, fallback = 0) => {
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : fallback;
+};
+
+export default function Home() {
+  const [tab, setTab] = useState<Tab>("visao");
+  const [equipTab, setEquipTab] = useState<EquipmentTab>("modulo");
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [projetos, setProjetos] = useState<Projeto[]>([]);
+  const [nomeCliente, setNomeCliente] = useState("");
+  const [cidadeCliente, setCidadeCliente] = useState("Sorocaba/SP");
+  const [telefoneCliente, setTelefoneCliente] = useState("");
+  const [clienteProjeto, setClienteProjeto] = useState("");
+  const [consumo, setConsumo] = useState("600");
+  const [hsp, setHsp] = useState("5");
+  const [perdas, setPerdas] = useState("20");
+  const [potenciaModulo, setPotenciaModulo] = useState("550");
+  const [modulosString, setModulosString] = useState("8");
+  const [strings, setStrings] = useState("1");
+  const [voc, setVoc] = useState("49.9");
+  const [vmp, setVmp] = useState("41.8");
+  const [imp, setImp] = useState("13.16");
+  const [coefVoc, setCoefVoc] = useState("-0.25");
+  const [tempMin, setTempMin] = useState("5");
+  const [tensaoRede, setTensaoRede] = useState("220");
+  const [distribuidora, setDistribuidora] = useState("CPFL Piratininga");
+  const [responsavel, setResponsavel] = useState("");
+  const [busca, setBusca] = useState("");
+
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("djsolar-clientes");
+      const p = localStorage.getItem("djsolar-projetos");
+      if (c) setClientes(JSON.parse(c));
+      if (p) setProjetos(JSON.parse(p));
+    } catch {}
+  }, []);
+
+  const calculo = useMemo(() => {
+    const consumoKwh = Math.max(1, num(consumo, 600));
+    const sol = Math.max(0.1, num(hsp, 5));
+    const pr = Math.max(0.4, 1 - Math.min(60, Math.max(0, num(perdas, 20))) / 100);
+    const moduloW = Math.max(1, num(potenciaModulo, 550));
+    const kwp = (consumoKwh / 30) / (sol * pr);
+    const qtd = Math.ceil((kwp * 1000) / moduloW);
+    const instalada = (qtd * moduloW) / 1000;
+    const geracao = instalada * sol * 30 * pr;
+    return { kwp, qtd, instalada, geracao };
+  }, [consumo, hsp, perdas, potenciaModulo]);
+
+  const validacao = useMemo(() => {
+    const nString = Math.max(1, Math.round(num(modulosString, 8)));
+    const nStrings = Math.max(1, Math.round(num(strings, 1)));
+    const vocStc = Math.max(0, num(voc, 49.9));
+    const vmpStc = Math.max(0, num(vmp, 41.8));
+    const corrente = Math.max(0, num(imp, 13.16)) * nStrings;
+    const beta = Math.abs(num(coefVoc, -0.25)) / 100;
+    const frio = Math.max(0, 25 - num(tempMin, 5));
+    const vocCorrigida = vocStc * (1 + beta * frio);
+    const tensaoVocString = vocCorrigida * nString;
+    const tensaoVmpString = vmpStc * nString;
+    const potenciaDc = nString * nStrings * Math.max(0, num(potenciaModulo, 550)) / 1000;
+    const okTensao = tensaoVocString < 600 && tensaoVmpString >= 90 && tensaoVmpString <= 560;
+    const okCorrente = corrente <= 12.5;
+    return { nString, nStrings, vocCorrigida, tensaoVocString, tensaoVmpString, corrente, potenciaDc, ok: okTensao && okCorrente, okTensao, okCorrente };
+  }, [modulosString, strings, voc, vmp, imp, coefVoc, tempMin, potenciaModulo]);
+
+  const salvarCliente = () => {
+    if (!nomeCliente.trim()) return;
+    const novo = { id: crypto.randomUUID(), nome: nomeCliente.trim(), cidade: cidadeCliente.trim(), telefone: telefoneCliente.trim() };
+    const lista = [novo, ...clientes];
+    setClientes(lista);
+    localStorage.setItem("djsolar-clientes", JSON.stringify(lista));
+    setNomeCliente("");
+    setTelefoneCliente("");
+  };
+
+  const salvarProjeto = () => {
+    const novo: Projeto = {
+      id: crypto.randomUUID(),
+      nome: `Projeto ${projetos.length + 1}`,
+      cliente: clienteProjeto || "Sem cliente",
+      potenciaKwp: calculo.instalada,
+      modulos: calculo.qtd,
+      status: validacao.ok ? "Compatível" : "Revisar",
+    };
+    const lista = [novo, ...projetos];
+    setProjetos(lista);
+    localStorage.setItem("djsolar-projetos", JSON.stringify(lista));
+  };
+
+  return (
+    <main className="app">
+      <header className="header">
+        <img className="logo" src="/logo-dj-solar.jpg" alt="DJ Solar Engenharia" />
+        <h1>{tab === "visao" ? "Visão geral" : tab === "projetos" ? "Projetos" : tab === "diagrama" ? "Diagrama" : tab === "clientes" ? "Clientes" : "Equipamentos"}</h1>
+        <div className="avatar">DB</div>
+      </header>
+
+      <section className="main-content">
+        {tab === "visao" && (
+          <>
+            <section className="hero-card">
+              <span>ENERGIA QUE GERA RESULTADOS</span>
+              <h2>Dimensione com precisão.<br/><b>Venda com confiança.</b></h2>
+              <p>Projetos fotovoltaicos profissionais, da análise de consumo à proposta comercial.</p>
+              <button className="cta amber" onClick={() => setTab("projetos")}>＋ Novo dimensionamento</button>
+              <button className="cta light" onClick={() => setTab("clientes")}>Cadastrar cliente</button>
+            </section>
+
+            <div className="stats-grid">
+              <Stat label="Clientes" value={String(clientes.length)} detail="Cadastrados" icon="♙" />
+              <Stat label="Projetos" value={String(projetos.length)} detail="Em andamento" icon="☀" />
+              <Stat label="Potência" value={`${fmt(projetos.reduce((s,p)=>s+p.potenciaKwp,0),1)} kWp`} detail="Dimensionada" icon="ϟ" />
+              <Stat label="Equipamentos" value="2" detail="Confirmados" icon="▤" />
+            </div>
+          </>
+        )}
+
+        {tab === "equipamentos" && (
+          <>
+            <input className="search" value={busca} onChange={(e)=>setBusca(e.target.value)} placeholder="⌕  Pesquisar..." />
+            <div className="title-row">
+              <div><span className="tag">CATÁLOGO TÉCNICO</span><h2>Buscar equipamento pelo modelo</h2><p>Escolha o componente para preencher automaticamente os dados técnicos.</p></div>
+              <span className="source-badge">FONTE DO<br/>FABRICANTE</span>
+            </div>
+            <section className="card equipment-picker">
+              <div className="segmented">
+                <button className={equipTab === "modulo" ? "selected" : ""} onClick={()=>setEquipTab("modulo")}>▥ Placa solar</button>
+                <button className={equipTab === "inversor" ? "selected" : ""} onClick={()=>setEquipTab("inversor")}>⌁ Inversor</button>
+              </div>
+              {equipTab === "modulo" ? <>
+                <Field label="Fabricante"><select><option>Jinko Solar</option><option>Astronergy</option></select></Field>
+                <Field label="Modelo"><select><option>Tiger Pro JKM585M-72HL4-V</option><option>ASTRO N7 610 W</option></select></Field>
+              </> : <>
+                <Field label="Fabricante"><select><option>Huawei</option></select></Field>
+                <Field label="Modelo"><select><option>SUN2000-5KTL-L1</option><option>SUN2000-6KTL-L1</option></select></Field>
+              </>}
+              <div className="soft-note">Novos fabricantes e modelos serão adicionados continuamente.<br/>O cadastro manual permanece disponível.</div>
+            </section>
+
+            {equipTab === "modulo" ? (
+              <section className="card catalog-card accent">
+                <div className="card-top"><span>MÓDULO</span><span className="tag">PRÉ-CADASTRADO</span></div>
+                <h2>Jinko Solar</h2><p className="model">Tiger Pro JKM585M-72HL4-V</p>
+                <div className="spec-grid"><Spec label="Potência" value="585 Wp"/><Spec label="Tipo" value="Módulo FV"/><Spec label="Origem" value="Catálogo técnico"/></div>
+                <button className="green-btn" onClick={()=>{setPotenciaModulo("585");setTab("projetos")}}>Usar este módulo no projeto →</button>
+              </section>
+            ) : (
+              <section className="card catalog-card accent">
+                <div className="card-top"><span>INVERSOR</span><span className="tag">PRÉ-CADASTRADO</span></div>
+                <h2>Huawei</h2><p className="model">SUN2000-5KTL-L1</p>
+                <div className="spec-grid"><Spec label="Potência CA" value="5 kW"/><Spec label="Tensão CC máx." value="600 V"/><Spec label="Faixa MPPT" value="90–560 V"/><Spec label="Corrente/MPPT" value="12,5 A"/><Spec label="Rastreadores" value="2 MPPT"/></div>
+                <p className="official">↗ Abrir fonte oficial</p>
+                <button className="green-btn" onClick={()=>setTab("projetos")}>Usar este inversor no projeto →</button>
+              </section>
+            )}
+          </>
+        )}
+
+        {tab === "clientes" && (
+          <>
+            <div className="title-row"><div><span className="tag">RELACIONAMENTO</span><h2>Cadastro de clientes</h2><p>Organize os dados comerciais antes de iniciar o dimensionamento.</p></div></div>
+            <section className="card">
+              <Field label="Nome / empresa"><input value={nomeCliente} onChange={(e)=>setNomeCliente(e.target.value)} placeholder="Nome do cliente" /></Field>
+              <div className="two"><Field label="Cidade / UF"><input value={cidadeCliente} onChange={(e)=>setCidadeCliente(e.target.value)} /></Field><Field label="Telefone"><input value={telefoneCliente} onChange={(e)=>setTelefoneCliente(e.target.value)} /></Field></div>
+              <button className="green-btn" onClick={salvarCliente}>Salvar cliente</button>
+            </section>
+            <section className="card"><h3>Clientes cadastrados</h3>{clientes.length===0?<p className="muted">Nenhum cliente cadastrado.</p>:clientes.map(c=><div className="list" key={c.id}><div><b>{c.nome}</b><span>{c.cidade}</span></div><span>{c.telefone}</span></div>)}</section>
+          </>
+        )}
+
+        {tab === "projetos" && (
+          <>
+            <div className="title-row"><div><span className="tag">ETAPA 1 • DIMENSIONAMENTO</span><h2>Novo projeto fotovoltaico</h2><p>Informe o consumo e valide o sistema antes de avançar para o projeto elétrico.</p></div></div>
+            <section className="card">
+              <Field label="Cliente"><select value={clienteProjeto} onChange={(e)=>setClienteProjeto(e.target.value)}><option value="">Sem cliente vinculado</option>{clientes.map(c=><option key={c.id}>{c.nome}</option>)}</select></Field>
+              <div className="two"><Field label="Consumo médio (kWh/mês)"><input value={consumo} onChange={(e)=>setConsumo(e.target.value)} /></Field><Field label="Horas de sol pico"><input value={hsp} onChange={(e)=>setHsp(e.target.value)} /></Field></div>
+              <div className="two"><Field label="Perdas do sistema (%)"><input value={perdas} onChange={(e)=>setPerdas(e.target.value)} /></Field><Field label="Potência do módulo (W)"><input value={potenciaModulo} onChange={(e)=>setPotenciaModulo(e.target.value)} /></Field></div>
+              <div className="result-grid"><Spec label="Potência necessária" value={`${fmt(calculo.kwp,2)} kWp`}/><Spec label="Módulos" value={String(calculo.qtd)}/><Spec label="Potência instalada" value={`${fmt(calculo.instalada,2)} kWp`}/><Spec label="Geração estimada" value={`${fmt(calculo.geracao,0)} kWh/mês`}/></div>
+            </section>
+
+            <div className="title-row compatibility-title"><div><span className="tag">ETAPA 2 • VALIDAÇÃO ELÉTRICA</span><h2>Compatibilidade<br/>módulo × inversor</h2><p>Preencha exatamente os dados dos datasheets para validar a configuração.</p></div><span className={`compat-badge ${validacao.ok?"ok":"warn"}`}>{validacao.ok?"✓ CONFIGURAÇÃO COMPATÍVEL":"! REVISAR CONFIGURAÇÃO"}</span></div>
+            <section className="card">
+              <h3>▥ Dados do módulo e string</h3>
+              <Field label="Módulos/string"><input value={modulosString} onChange={(e)=>setModulosString(e.target.value)} /></Field>
+              <Field label="Nº de strings"><input value={strings} onChange={(e)=>setStrings(e.target.value)} /></Field>
+              <Field label="Potência (W)"><input value={potenciaModulo} onChange={(e)=>setPotenciaModulo(e.target.value)} /></Field>
+              <div className="two"><Field label="Voc (V)"><input value={voc} onChange={(e)=>setVoc(e.target.value)} /></Field><Field label="Vmp (V)"><input value={vmp} onChange={(e)=>setVmp(e.target.value)} /></Field></div>
+              <div className="two"><Field label="Imp (A)"><input value={imp} onChange={(e)=>setImp(e.target.value)} /></Field><Field label="Coef. Voc (%/°C)"><input value={coefVoc} onChange={(e)=>setCoefVoc(e.target.value)} /></Field></div>
+              <Field label="Temperatura mínima (°C)"><input value={tempMin} onChange={(e)=>setTempMin(e.target.value)} /></Field>
+              <div className="result-grid"><Spec label="Voc corrigida/módulo" value={`${fmt(validacao.vocCorrigida,1)} V`}/><Spec label="Voc/string" value={`${fmt(validacao.tensaoVocString,0)} V`}/><Spec label="Vmp/string" value={`${fmt(validacao.tensaoVmpString,0)} V`}/><Spec label="Corrente MPPT" value={`${fmt(validacao.corrente,1)} A`}/><Spec label="Potência CC" value={`${fmt(validacao.potenciaDc,2)} kWp`}/></div>
+              <div className={`validation ${validacao.ok?"good":"bad"}`}>{validacao.ok?"Configuração dentro dos limites informados do inversor.":`${!validacao.okTensao?"Verifique as tensões da string. ":""}${!validacao.okCorrente?"Corrente por MPPT acima de 12,5 A.":""}`}</div>
+              <button className="green-btn" onClick={salvarProjeto}>Salvar projeto</button>
+            </section>
+            {projetos.length>0 && <section className="card"><h3>Projetos salvos</h3>{projetos.map(p=><div className="list" key={p.id}><div><b>{p.nome}</b><span>{p.cliente} • {p.modulos} módulos</span></div><span>{fmt(p.potenciaKwp,2)} kWp • {p.status}</span></div>)}</section>}
+          </>
+        )}
+
+        {tab === "diagrama" && (
+          <>
+            <div className="title-row"><div><span className="tag">PROJETO ELÉTRICO</span><h2>Diagrama unifilar fotovoltaico</h2><p>Monte os dados básicos da conexão para a documentação técnica.</p></div></div>
+            <section className="card">
+              <Field label="Distribuidora"><input value={distribuidora} onChange={(e)=>setDistribuidora(e.target.value)} /></Field>
+              <div className="two"><Field label="Tensão de conexão (V)"><input value={tensaoRede} onChange={(e)=>setTensaoRede(e.target.value)} /></Field><Field label="Responsável técnico"><input value={responsavel} onChange={(e)=>setResponsavel(e.target.value)} placeholder="Nome do responsável" /></Field></div>
+            </section>
+            <section className="diagram-card">
+              <div className="diagram-line"><DiagramBox title="Módulos FV" detail={`${validacao.nString} módulos/string • ${validacao.nStrings} string(s)`}/><span>→</span><DiagramBox title="Inversor" detail="Huawei SUN2000-L1"/><span>→</span><DiagramBox title="Quadro CA" detail={`${tensaoRede} V`}/><span>→</span><DiagramBox title="Rede" detail={distribuidora}/></div>
+              <p>Diagrama preliminar. Proteções, seções de cabos, DPS, disjuntores e requisitos da distribuidora serão detalhados na etapa elétrica.</p>
+            </section>
+          </>
+        )}
+      </section>
+
+      <nav className="bottom-nav">
+        <Nav active={tab==="visao"} icon="▦" label="Visão" onClick={()=>setTab("visao")}/>
+        <Nav active={tab==="projetos"} icon="☀" label="Projetos" onClick={()=>setTab("projetos")}/>
+        <Nav active={tab==="diagrama"} icon="⌁" label="Diagrama" onClick={()=>setTab("diagrama")}/>
+        <Nav active={tab==="clientes"} icon="♙" label="Clientes" onClick={()=>setTab("clientes")}/>
+        <Nav active={tab==="equipamentos"} icon="▤" label="Equipamentos" onClick={()=>setTab("equipamentos")}/>
+      </nav>
+    </main>
+  );
 }
-function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="field"><span>{label}</span>{children}</label>};function Metric({label,value,detail}:{label:string;value:string;detail:string}){return <div className="metric"><span>{label}</span><strong>{value}</strong><small>{detail}</small></div>};function Result({label,value}:{label:string;value:string}){return <div className="result-card"><span>{label}</span><strong>{value}</strong></div>};function Empty({texto}:{texto:string}){return <div className="empty">{texto}</div>}
+
+function Field({label, children}:{label:string;children:React.ReactNode}) { return <label className="field"><span>{label}</span>{children}</label>; }
+function Stat({label,value,detail,icon}:{label:string;value:string;detail:string;icon:string}) { return <article className="stat"><div className="stat-icon">{icon}</div><div><span>{label}</span><b>{value}</b><small>{detail}</small></div></article>; }
+function Spec({label,value}:{label:string;value:string}) { return <div className="spec"><span>{label}</span><b>{value}</b></div>; }
+function Nav({active,icon,label,onClick}:{active:boolean;icon:string;label:string;onClick:()=>void}) { return <button className={active?"active":""} onClick={onClick}><span>{icon}</span><small>{label}</small></button>; }
+function DiagramBox({title,detail}:{title:string;detail:string}) { return <div className="diagram-box"><b>{title}</b><span>{detail}</span></div>; }
