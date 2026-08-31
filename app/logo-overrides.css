@@ -1,0 +1,26 @@
+.brand {
+  width: 100%;
+  min-height: 118px;
+  padding: 0;
+  border-radius: 14px;
+  background-image: url('/logo-dj-solar.jpg');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.brand > * {
+  display: none !important;
+}
+
+@media (max-width: 1100px) {
+  .brand { min-height: 102px; }
+}
+
+@media (max-width: 780px) {
+  .brand {
+    min-height: 105px;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+}
