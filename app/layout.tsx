@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./logo-overrides.css";
+import "./client-address-overrides.css";
 
 export const metadata: Metadata = {
   title: "DJ Solar | Dimensionamento Fotovoltaico",
